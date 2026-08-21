@@ -1,0 +1,4 @@
+numpy==2.0.2
+taichi==1.7.3
+meshio==5.3.5
+
