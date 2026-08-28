@@ -5,7 +5,7 @@ import taichi as ti
 from axis_helper import AxisHelper
 from cloth.grid import create_cloth_basis, create_cloth_grid
 
-# 격자의 각 변에는 GRID_SIZE개의 정점이 있다.
+# 격자의 각 변에 정점이 GRID_SIZE개.
 GRID_SIZE = 20
 WINDOW_RESOLUTION = (960, 720)
 CLOTH_POSITION = (0.0, 2.0, 0.0)
@@ -15,7 +15,6 @@ OBJECT_AXIS_LENGTH = 0.3
 
 
 def main() -> None:
-    # Metal은 Apple의 GPU 백엔드이며, Taichi가 이에 맞춰 커널과 렌더링을 컴파일한다.
     ti.init(arch=ti.metal)
 
     vertices_np, indices_np, edge_indices_np = create_cloth_grid(
@@ -24,17 +23,16 @@ def main() -> None:
         normal=CLOTH_NORMAL,
     )
 
-    # Taichi 필드는 WebGPU의 GPUBuffer와 유사한 GPU 접근 가능 버퍼다.
+    # Taichi 필드: GPU 접근 가능한 global data container. 다차원 배열.
     vertices = ti.Vector.field(3, dtype=ti.f32, shape=len(vertices_np))
     indices = ti.field(dtype=ti.i32, shape=len(indices_np))
     edge_indices = ti.field(dtype=ti.i32, shape=len(edge_indices_np))
 
-    # NumPy가 CPU에서 생성한 메쉬를 Taichi가 관리하는 메모리로 복사한다.
+    # NumPy가 CPU에서 생성한 메쉬 데이터를 Taichi 메모리로 복사.
     vertices.from_numpy(vertices_np)
     indices.from_numpy(indices_np)
     edge_indices.from_numpy(edge_indices_np)
 
-    # 월드 좌표축은 천보다 훨씬 멀리 뻗게 하여 무한한 선처럼 보이게 한다.
     world_axes = AxisHelper(
         positive_length=WORLD_AXIS_LENGTH,
         negative_length=WORLD_AXIS_LENGTH,
@@ -60,14 +58,13 @@ def main() -> None:
     gui = window.get_gui()
     camera = ti.ui.Camera()
 
-    # 양의 Z축에서 x-y 평면의 천을 정면으로 바라본다.
     camera.position(0.0, 1.0, 5.0)
     camera.lookat(0.0, 1.0, 0.0)
     camera.up(0.0, 1.0, 0.0)
     gravity_enabled = False
 
     while window.running:
-        # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동한다.
+        # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동.
         camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
         scene.set_camera(camera)
         canvas.set_background_color((1.0, 1.0, 1.0))
