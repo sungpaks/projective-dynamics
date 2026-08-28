@@ -3,6 +3,7 @@
 import taichi as ti
 
 from cloth.grid import create_cloth_basis, create_cloth_grid
+from cloth.rest_state import create_triangle_rest_state
 from cloth.solver import ClothSolver
 from lib.axis_helper import AxisHelper
 from lib.time_stepper import TimeStepper
@@ -27,7 +28,9 @@ def main() -> None:
         normal=CLOTH_NORMAL,
     )
 
-    solver = ClothSolver(vertices_np)
+    rest_state = create_triangle_rest_state(vertices_np, indices_np)
+
+    solver = ClothSolver(vertices_np, rest_state)
 
     time_stepper = TimeStepper(
         steps_per_second=60,

@@ -5,16 +5,21 @@
 import numpy as np
 import taichi as ti
 
+from cloth.rest_state import TriangleRestState
+
 
 @ti.data_oriented
 class ClothSolver:
-    def __init__(self, initial_positions: np.ndarray):
+    def __init__(self, initial_positions: np.ndarray, rest_state: TriangleRestState):
         self._initial_positions = np.asarray(
             initial_positions,
             dtype=np.float32,
         ).copy()
-        vertex_count = len(self._initial_positions)
 
+        vertex_count = len(self._initial_positions)
+        triangle_count = len(rest_state.triangles)
+
+        # q, v, s
         self.positions = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
         self.velocities = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
         self.predicted_positions = ti.Vector.field(
@@ -24,6 +29,26 @@ class ClothSolver:
         )
 
         self.reset()
+
+        # 삼각형 인덱스: 정점 인덱스 세 개씩
+        self.triangles = ti.Vector.field(
+            3,
+            dtype=ti.i32,
+            shape=triangle_count,
+        )
+        # X_g의 역행렬: 삼각형 하나의 Edge 두 개를 갖는 2x2 행렬
+        self.inverse_rest_matrices = ti.Matrix.field(
+            2,
+            2,
+            dtype=ti.f32,
+            shape=triangle_count,
+        )
+        # 삼각형 면적: 삼각형 하나당 하나의 scalar(float)
+        self.areas = ti.field(dtype=ti.f32, shape=triangle_count)
+
+        self.triangles.from_numpy(rest_state.triangles)
+        self.inverse_rest_matrices.from_numpy(rest_state.inverse_edge_matrices)
+        self.areas.from_numpy(rest_state.areas)
 
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
