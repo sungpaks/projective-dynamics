@@ -1,7 +1,6 @@
 """Taichi GGUI로 정적인 삼각형 격자를 렌더링한다."""
 
 import taichi as ti
-import time
 
 from axis_helper import AxisHelper
 from cloth.grid import create_cloth_basis, create_cloth_grid
@@ -32,7 +31,7 @@ def main() -> None:
     time_stepper = TimeStepper(
         steps_per_second=60,
         max_frame_time=0.25,
-        max_substeps=8
+        max_substeps=8,
     )
 
     # Taichi 필드: GPU 접근 가능한 global data container. 다차원 배열.
@@ -75,10 +74,8 @@ def main() -> None:
 
     while window.running:
         gravity = GRAVITY if gravity_enabled else (0.0, 0.0, 0.0)
-        time_stepper.advance(
-            lambda time_step: solver.step(time_step, gravity)
-        )
-        
+        time_stepper.advance(lambda time_step: solver.step(time_step, gravity))
+
         # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동.
         camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
         scene.set_camera(camera)
@@ -107,8 +104,12 @@ def main() -> None:
 
         canvas.scene(scene)
 
-        with gui.sub_window("Controls", 0.02, 0.82, 0.16, 0.12):
+        with gui.sub_window("Controls", 0.02, 0.78, 0.16, 0.16):
             gravity_enabled = gui.checkbox("gravity", gravity_enabled)
+            if gui.button("reset"):
+                gravity_enabled = False
+                solver.reset()
+                time_stepper.reset()
 
         window.show()
 
