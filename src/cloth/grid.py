@@ -17,10 +17,10 @@ def create_cloth_grid(
         for column in range(size):
             vertex_index = row * size + column
 
-            # Map grid coordinates to [-1, 1] and place the cloth on the x-z plane.
+            # Place the cloth on the x-y plane, with the first row at the top.
             x = column / (size - 1) * 2.0 - 1.0
-            z = row / (size - 1) * 2.0 - 1.0
-            vertices[vertex_index] = (x, 0.0, z)
+            y = 1.0 - row / (size - 1) * 2.0
+            vertices[vertex_index] = (x, y, 0.0)
 
     # One square cell becomes two triangles, with three indices per triangle.
     indices = np.zeros(cell_count * 2 * 3, dtype=np.int32)

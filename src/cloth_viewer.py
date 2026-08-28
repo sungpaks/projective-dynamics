@@ -2,11 +2,14 @@
 
 import taichi as ti
 
+from axis_helper import AxisHelper
 from cloth.grid import create_cloth_grid
 
 # The grid has GRID_SIZE vertices along each side.
 GRID_SIZE = 100
 WINDOW_RESOLUTION = (960, 720)
+WORLD_AXIS_LENGTH = 100.0
+OBJECT_AXIS_LENGTH = 0.3
 
 
 def main() -> None:
@@ -25,6 +28,17 @@ def main() -> None:
     indices.from_numpy(indices_np)
     edge_indices.from_numpy(edge_indices_np)
 
+    # The world helper spans far beyond the cloth so it reads like infinite lines.
+    world_axes = AxisHelper(
+        positive_length=WORLD_AXIS_LENGTH,
+        negative_length=WORLD_AXIS_LENGTH,
+        width=1.0,
+        colors=((0.65, 0.35, 0.35), (0.35, 0.65, 0.35), (0.35, 0.45, 0.7)),
+    )
+
+    # With no object transform yet, the cloth's local frame matches the world frame.
+    object_axes = AxisHelper(positive_length=OBJECT_AXIS_LENGTH, width=5.0)
+
     window = ti.ui.Window(
         "Projective Dynamics - Static Cloth",
         WINDOW_RESOLUTION,
@@ -32,12 +46,14 @@ def main() -> None:
     )
     canvas = window.get_canvas()
     scene = window.get_scene()
+    gui = window.get_gui()
     camera = ti.ui.Camera()
 
-    # Position the camera above and in front of the horizontal cloth.
-    camera.position(0.0, 1.8, 2.8)
+    # Face the x-y cloth straight on from the positive z-axis.
+    camera.position(0.0, 0.0, 3.0)
     camera.lookat(0.0, 0.0, 0.0)
     camera.up(0.0, 1.0, 0.0)
+    gravity_enabled = False
 
     while window.running:
         # RMB rotates the camera; W/A/S/D/E/Q move it.
@@ -47,6 +63,9 @@ def main() -> None:
 
         scene.ambient_light((0.45, 0.45, 0.45))
         scene.point_light(pos=(2.0, 3.0, 2.0), color=(1.0, 1.0, 1.0))
+
+        world_axes.draw(scene)
+
         scene.mesh(
             vertices,
             indices=indices,
@@ -60,7 +79,14 @@ def main() -> None:
             color=(0.45, 0.85, 0.45),
         )
 
+        # Draw the cloth frame last so it remains visible over the mesh.
+        object_axes.draw(scene)
+
         canvas.scene(scene)
+
+        with gui.sub_window("Controls", 0.02, 0.82, 0.16, 0.12):
+            gravity_enabled = gui.checkbox("gravity", gravity_enabled)
+
         window.show()
 
 
