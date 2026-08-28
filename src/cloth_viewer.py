@@ -1,9 +1,11 @@
 """Taichi GGUI로 정적인 삼각형 격자를 렌더링한다."""
 
 import taichi as ti
+import time
 
 from axis_helper import AxisHelper
 from cloth.grid import create_cloth_basis, create_cloth_grid
+from cloth.solver import ClothSolver
 
 # 격자의 각 변에 정점이 GRID_SIZE개.
 GRID_SIZE = 20
@@ -13,6 +15,12 @@ CLOTH_NORMAL = (0.0, 0.0, 1.0)
 WORLD_AXIS_LENGTH = 100.0
 OBJECT_AXIS_LENGTH = 0.3
 
+PHYSICS_FPS = 60
+TIME_STEP = 1.0 / PHYSICS_FPS
+MAX_FRAME_TIME = 0.25
+MAX_SUBSTEPS = 8
+
+GRAVITY = (0.0, -9.81, 0.0)
 
 def main() -> None:
     ti.init(arch=ti.metal)
@@ -22,6 +30,8 @@ def main() -> None:
         position=CLOTH_POSITION,
         normal=CLOTH_NORMAL,
     )
+
+    solver = ClothSolver(vertices_np)
 
     # Taichi 필드: GPU 접근 가능한 global data container. 다차원 배열.
     vertices = ti.Vector.field(3, dtype=ti.f32, shape=len(vertices_np))
@@ -63,7 +73,23 @@ def main() -> None:
     camera.up(0.0, 1.0, 0.0)
     gravity_enabled = False
 
+    previous_time = time.perf_counter()
+    accumulator = 0.0
+
     while window.running:
+        current_time = time.perf_counter()
+        frame_time = current_time - previous_time
+        previous_time = current_time
+        
+        frame_time = min(frame_time, MAX_FRAME_TIME)
+        accumulator += frame_time
+        substep_count = 0
+        gravity = GRAVITY if gravity_enabled else (0.0, 0.0, 0.0)
+        while accumulator >= TIME_STEP and substep_count < MAX_SUBSTEPS:
+            solver.step(TIME_STEP, gravity)
+            accumulator -= TIME_STEP
+            substep_count += 1
+        
         # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동.
         camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
         scene.set_camera(camera)
