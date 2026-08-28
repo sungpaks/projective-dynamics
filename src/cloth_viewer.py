@@ -17,6 +17,7 @@ OBJECT_AXIS_LENGTH = 0.3
 
 GRAVITY = (0.0, -9.81, 0.0)
 
+
 def main() -> None:
     ti.init(arch=ti.metal)
 
@@ -67,8 +68,8 @@ def main() -> None:
     gui = window.get_gui()
     camera = ti.ui.Camera()
 
-    camera.position(0.0, 1.0, 5.0)
-    camera.lookat(0.0, 1.0, 0.0)
+    camera.position(0.2, 1.0, 5.0)
+    camera.lookat(0.0, 0.9, 0.0)
     camera.up(0.0, 1.0, 0.0)
     gravity_enabled = False
 

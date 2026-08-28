@@ -38,6 +38,7 @@ class ClothSolver:
     ) -> None:
         """주어진 시간만큼 물리 상태를 진행한다."""
         self._predict_positions(time_step, gravity)
+        self._project_ground_constraint()
         self._update_state(time_step)
 
     @ti.kernel
@@ -54,6 +55,16 @@ class ClothSolver:
                 position + velocity * time_step + time_step * time_step * gravity
             )
             self.predicted_positions[vertex_index] = predicted
+
+    @ti.kernel
+    def _project_ground_constraint(self):
+        # 모든 정점이 지면 아래로 내려가지 않도록 제한한다.
+        for vertex_index in self.predicted_positions:
+            predicted = self.predicted_positions[vertex_index]
+            if predicted[1] < 0.0:
+                predicted[1] = 0.0
+                self.predicted_positions[vertex_index] = predicted
+                # predicted는 참조가 아니라서 이렇게 업데이트해줘야
 
     @ti.kernel
     def _update_state(self, time_step: ti.f32):
