@@ -32,7 +32,8 @@ class ClothSolver:
       gravity: tuple[float, float, float]
   ) -> None:
     # Python 코드에서 한 프레임마다 호출, 물리 연산 algorithm 진행
-    pass
+    self._predict_positions(time_step, gravity)
+    self._update_state(time_step)
 
 # pyright: reportInvalidTypeForm=false
   @ti.kernel
@@ -42,4 +43,24 @@ class ClothSolver:
     gravity: ti.types.vector(3, ti.f32),
   ):
     # 모든 정점의 예상 위치 계산
-    pass
+    for vertex_index in self.positions:
+      position = self.positions[vertex_index]
+      velocity = self.velocities[vertex_index]
+      predicted = (
+        position 
+      + velocity * time_step
+      + time_step * time_step * gravity
+      )
+      self.predicted_positions[vertex_index] = predicted
+
+  @ti.kernel
+  def _update_state(self, time_step: ti.f32):
+    # 모든 정점의 위치와 속도 업데이트
+    for vertex_index in self.positions:
+      new_velocity = (
+        self.predicted_positions[vertex_index]
+        - self.positions[vertex_index]
+      ) / time_step
+
+      self.velocities[vertex_index] = new_velocity
+      self.positions[vertex_index] = self.predicted_positions[vertex_index]

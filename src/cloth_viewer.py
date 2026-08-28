@@ -36,12 +36,10 @@ def main() -> None:
     )
 
     # Taichi 필드: GPU 접근 가능한 global data container. 다차원 배열.
-    vertices = ti.Vector.field(3, dtype=ti.f32, shape=len(vertices_np))
     indices = ti.field(dtype=ti.i32, shape=len(indices_np))
     edge_indices = ti.field(dtype=ti.i32, shape=len(edge_indices_np))
 
     # NumPy가 CPU에서 생성한 메쉬 데이터를 Taichi 메모리로 복사.
-    vertices.from_numpy(vertices_np)
     indices.from_numpy(indices_np)
     edge_indices.from_numpy(edge_indices_np)
 
@@ -92,13 +90,13 @@ def main() -> None:
         world_axes.draw(scene)
 
         scene.mesh(
-            vertices,
+            solver.positions,
             indices=indices,
             color=(0.92, 1.0, 0.92),
             two_sided=True,
         )
         scene.lines(
-            vertices,
+            solver.positions,
             width=2.5,
             indices=edge_indices,
             color=(0.45, 0.85, 0.45),
