@@ -1,1 +1,1 @@
-"""Cloth mesh generation and simulation components."""
+"""천 메쉬 생성 및 시뮬레이션 구성 요소."""
