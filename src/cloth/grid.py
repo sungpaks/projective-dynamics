@@ -51,7 +51,13 @@ def create_cloth_grid(
             (triangle[1], triangle[2]),
             (triangle[2], triangle[0]),
         ):
-            edges.add(tuple(sorted((int(start), int(end)))))
+            start_index = int(start)
+            end_index = int(end)
+            edge = (
+                min(start_index, end_index),
+                max(start_index, end_index),
+            )
+            edges.add(edge)
 
     edge_indices = np.array(sorted(edges), dtype=np.int32).reshape(-1)
 

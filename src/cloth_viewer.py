@@ -5,7 +5,7 @@ import taichi as ti
 from cloth.grid import create_cloth_grid
 
 # The grid has GRID_SIZE vertices along each side.
-GRID_SIZE = 10
+GRID_SIZE = 100
 WINDOW_RESOLUTION = (960, 720)
 
 
