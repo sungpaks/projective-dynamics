@@ -2,10 +2,10 @@
 
 import taichi as ti
 
-from axis_helper import AxisHelper
 from cloth.grid import create_cloth_basis, create_cloth_grid
 from cloth.solver import ClothSolver
-from time_stepper import TimeStepper
+from lib.axis_helper import AxisHelper
+from lib.time_stepper import TimeStepper
 
 # 격자의 각 변에 정점이 GRID_SIZE개.
 GRID_SIZE = 20
