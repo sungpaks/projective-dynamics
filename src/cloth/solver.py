@@ -5,6 +5,7 @@
 import numpy as np
 import taichi as ti
 
+from cloth.constraint import IdentityConstraintSet
 from cloth.rest_state import TriangleRestState
 
 
@@ -52,6 +53,12 @@ class ClothSolver:
         self.areas.from_numpy(rest_state.areas)
 
         self._solver_iterations = 1  # local <-> global 반복 횟수
+
+        # Constraints
+        self.identity_constraints = IdentityConstraintSet(vertex_count, weight=1.0)
+        self.projective_constraints = [
+            self.identity_constraints  # 더미 ConstraintSet
+        ]
 
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
@@ -111,20 +118,20 @@ class ClothSolver:
     @ti.kernel
     def _project_ground_constraint(self):
         # 모든 정점이 지면 아래로 내려가지 않도록 제한한다.
-        for vertex_index in self.predicted_positions:
-            predicted = self.predicted_positions[vertex_index]
-            if predicted[1] < 0.0:
-                predicted[1] = 0.0
-                self.predicted_positions[vertex_index] = predicted
-                # predicted는 참조가 아니라서 이렇게 업데이트해줘야
+        for vertex_index in self.solve_positions:
+            solved = self.solve_positions[vertex_index]
+            if solved[1] < 0.0:
+                solved[1] = 0.0
+                self.solve_positions[vertex_index] = solved
+                # solved는 참조가 아니라서 이렇게 업데이트해줘야
 
     @ti.kernel
     def _update_state(self, time_step: ti.f32):
         # 모든 정점의 위치와 속도를 업데이트한다.
         for vertex_index in self.positions:
             new_velocity = (
-                self.predicted_positions[vertex_index] - self.positions[vertex_index]
+                self.solve_positions[vertex_index] - self.positions[vertex_index]
             ) / time_step
 
             self.velocities[vertex_index] = new_velocity
-            self.positions[vertex_index] = self.predicted_positions[vertex_index]
+            self.positions[vertex_index] = self.solve_positions[vertex_index]

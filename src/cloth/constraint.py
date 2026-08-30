@@ -25,7 +25,7 @@ class IdentityConstraintSet:
     """
     더미 ConstraintSet.
     - selection은 각 정점별로
-    -
+    - 대각 성분 only
     """
 
     def __init__(self, vertex_count: int, weight: float) -> None:
