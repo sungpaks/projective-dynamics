@@ -19,7 +19,7 @@ class ClothSolver:
         vertex_count = len(self._initial_positions)
         triangle_count = len(rest_state.triangles)
 
-        # q, v, s
+        # q_n, v, s, q_n+1(구하는 중)
         self.positions = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
         self.velocities = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
         self.predicted_positions = ti.Vector.field(
@@ -27,6 +27,7 @@ class ClothSolver:
             dtype=ti.f32,
             shape=vertex_count,
         )
+        self.solve_positions = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
 
         self.reset()
 
@@ -50,11 +51,14 @@ class ClothSolver:
         self.inverse_rest_matrices.from_numpy(rest_state.inverse_edge_matrices)
         self.areas.from_numpy(rest_state.areas)
 
+        self._solver_iterations = 1  # local <-> global 반복 횟수
+
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
         self.positions.from_numpy(self._initial_positions)
         self.velocities.fill(0.0)
         self.predicted_positions.from_numpy(self._initial_positions)
+        self.solve_positions.from_numpy(self._initial_positions)
 
     def step(
         self,
@@ -63,7 +67,13 @@ class ClothSolver:
     ) -> None:
         """주어진 시간만큼 물리 상태를 진행한다."""
         self._predict_positions(time_step, gravity)
-        self._project_ground_constraint()
+        self._initialize_solve_positions()
+        for _ in range(self._solver_iterations):
+            self._local_step()
+            self._global_step(time_step)
+
+            # 'collision'을 여기서 따로? self._project_collisions()
+            self._project_ground_constraint()
         self._update_state(time_step)
 
     @ti.kernel
@@ -80,6 +90,25 @@ class ClothSolver:
                 position + velocity * time_step + time_step * time_step * gravity
             )
             self.predicted_positions[vertex_index] = predicted
+
+    @ti.kernel
+    def _initialize_solve_positions(self):
+        for vertex_index in self.solve_positions:
+            self.solve_positions[vertex_index] = self.predicted_positions[vertex_index]
+
+    @ti.kernel
+    def _local_step(self) -> None:
+        # Constraint Projection..
+        # 각 삼각형에 대해, p_i를 찾기
+        # self._projected_deformations, self._projected_bending, ...
+        pass
+
+    @ti.kernel
+    def _global_step(self, time_step: float) -> None:
+        # Solve Linear System .. Equation 10을 짧게, Lq = b
+        # L = ... 매번 고정인 Global Matrix
+        # b = ... local step에서의 projected positions p_i를 모두 모은다
+        pass
 
     @ti.kernel
     def _project_ground_constraint(self):
