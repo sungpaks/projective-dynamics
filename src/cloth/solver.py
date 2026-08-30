@@ -96,14 +96,12 @@ class ClothSolver:
         for vertex_index in self.solve_positions:
             self.solve_positions[vertex_index] = self.predicted_positions[vertex_index]
 
-    @ti.kernel
     def _local_step(self) -> None:
         # Constraint Projection..
         # 각 삼각형에 대해, p_i를 찾기
         # self._projected_deformations, self._projected_bending, ...
         pass
 
-    @ti.kernel
     def _global_step(self, time_step: float) -> None:
         # Solve Linear System .. Equation 10을 짧게, Lq = b
         # L = ... 매번 고정인 Global Matrix
