@@ -5,6 +5,8 @@ from typing import Protocol
 import numpy as np
 import taichi as ti
 
+from cloth.matrix_assembler import MatrixAssembler
+
 
 class ProjectiveConstraintSet(Protocol):
     @property
@@ -44,26 +46,26 @@ class IdentityConstraintSet:
     def project(self, solve_positions) -> None:
         self._project_all(solve_positions)
 
-    def add_lhs(self, assembler) -> None:
+    def add_lhs(self, assembler: MatrixAssembler) -> None:
         # 정점 하나씩 선택되므로 global L matrix의 대각성분 하나에만 영향(weight)을 준다
-        self._add_lhs(assembler)
+        for vertex_index in self.vertex_indices:
+            assembler.add(vertex_index, vertex_index, self._weight)
 
     def add_rhs(self, global_rhs) -> None:
         # 정점 하나씩 선택되므로 global rhs의 정점별 항 하나에만 영향(weight)을 준다.
-        for instance_index in self.vertex_indices:
-            vertex_index = self.vertex_indices[instance_index]
-            global_rhs[vertex_index] += self._weight * self.projections[instance_index]
+        self._add_rhs(global_rhs)
 
     @ti.kernel
     def _project_all(self, solve_positions: ti.template()):
         for instance_index in self.vertex_indices:
             # instance_index: constraint instance의 번호
             # vertex_index: instance가 선택한 정점 번호
-            # EmptyConstraint는 정점 하나만 선택하므로 instance_index == vertex_index
+            # IdentityConstraint는 정점 하나만 선택하므로 instance_index == vertex_index
             vertex_index = self.vertex_indices[instance_index]
             self.projections[instance_index] = solve_positions[vertex_index]
 
     @ti.kernel
-    def _add_lhs(self, assembler: ti.template()):
-        for vertex_index in self.vertex_indices:
-            assembler.add(vertex_index, vertex_index, self._weight)
+    def _add_rhs(self, global_rhs: ti.template()):
+        for instance_index in self.vertex_indices:
+            vertex_index = self.vertex_indices[instance_index]
+            global_rhs[vertex_index] += self._weight * self.projections[instance_index]
