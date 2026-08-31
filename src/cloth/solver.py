@@ -71,6 +71,7 @@ class ClothSolver:
             time_step=time_step,
             constraints=self.projective_constraints,
         )
+        self._time_step = time_step
 
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
@@ -81,11 +82,10 @@ class ClothSolver:
 
     def step(
         self,
-        time_step: float,
         gravity: tuple[float, float, float],
     ) -> None:
         """주어진 시간만큼 물리 상태를 진행한다."""
-        self._predict_positions(time_step, gravity)
+        self._predict_positions(self._time_step, gravity)
         self._initialize_solve_positions()
         for _ in range(self._solver_iterations):
             self._local_step()
@@ -93,7 +93,7 @@ class ClothSolver:
 
             # 'collision'을 여기서 따로? self._project_collisions()
             self._project_ground_constraint()
-        self._update_state(time_step)
+        self._update_state(self._time_step)
 
     @ti.kernel
     def _predict_positions(

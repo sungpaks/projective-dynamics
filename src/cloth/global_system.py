@@ -55,7 +55,7 @@ class DiagonalGlobalSystem:
         self._solve_linear_system(solve_positions)
 
     @ti.kernel
-    def _initialize_rhs(self, predicted_positions: TaichiTemplate) -> None:
+    def _initialize_rhs(self, predicted_positions: TaichiTemplate):
         """Global RHS를 초기화"""
         for vertex_index in range(self._vertex_count):
             self.system_rhs[vertex_index] = predicted_positions[vertex_index] / (

@@ -80,7 +80,7 @@ def main() -> None:
 
     while window.running:
         gravity = GRAVITY if gravity_enabled else (0.0, 0.0, 0.0)
-        time_stepper.advance(lambda time_step: solver.step(time_step, gravity))
+        time_stepper.advance(lambda time_step: solver.step(gravity))
 
         # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동.
         camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
