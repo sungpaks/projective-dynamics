@@ -4,7 +4,7 @@ import numpy as np
 import taichi as ti
 
 from cloth.constraint import IdentityConstraintSet, ProjectiveConstraintSet
-from cloth.global_system import DiagonalGlobalSystem
+from cloth.global_system import DenseGlobalSystem
 from cloth.rest_state import TriangleRestState
 from lib.taichi_typing import TaichiF32, TaichiVector3F32
 
@@ -66,7 +66,7 @@ class ClothSolver:
         ]
 
         # Global System
-        self.global_system = DiagonalGlobalSystem(
+        self.global_system = DenseGlobalSystem(
             vertex_count=vertex_count,
             time_step=time_step,
             constraints=self.projective_constraints,
