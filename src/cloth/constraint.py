@@ -1,11 +1,10 @@
-# pyright: reportInvalidTypeForm=false
-
 from typing import Protocol
 
 import numpy as np
 import taichi as ti
 
 from cloth.matrix_assembler import MatrixAssembler
+from lib.taichi_typing import TaichiTemplate
 
 
 class ProjectiveConstraintSet(Protocol):
@@ -18,7 +17,7 @@ class ProjectiveConstraintSet(Protocol):
     def add_lhs(self, assembler) -> None:
         """고정된 Global Matrix contribution 추가"""
 
-    def add_rhs(self, global_rhs) -> None:
+    def add_rhs(self, system_rhs) -> None:
         """현재 p_i로 global RHS contribution 추가"""
 
 
@@ -48,15 +47,15 @@ class IdentityConstraintSet:
 
     def add_lhs(self, assembler: MatrixAssembler) -> None:
         # 정점 하나씩 선택되므로 global L matrix의 대각성분 하나에만 영향(weight)을 준다
-        for vertex_index in self.vertex_indices:
+        for vertex_index in range(self._instance_count):
             assembler.add(vertex_index, vertex_index, self._weight)
 
-    def add_rhs(self, global_rhs) -> None:
+    def add_rhs(self, system_rhs) -> None:
         # 정점 하나씩 선택되므로 global rhs의 정점별 항 하나에만 영향(weight)을 준다.
-        self._add_rhs(global_rhs)
+        self._add_rhs(system_rhs)
 
     @ti.kernel
-    def _project_all(self, solve_positions: ti.template()):
+    def _project_all(self, solve_positions: TaichiTemplate):
         for instance_index in self.vertex_indices:
             # instance_index: constraint instance의 번호
             # vertex_index: instance가 선택한 정점 번호
@@ -65,7 +64,7 @@ class IdentityConstraintSet:
             self.projections[instance_index] = solve_positions[vertex_index]
 
     @ti.kernel
-    def _add_rhs(self, global_rhs: ti.template()):
+    def _add_rhs(self, system_rhs: TaichiTemplate):
         for instance_index in self.vertex_indices:
             vertex_index = self.vertex_indices[instance_index]
-            global_rhs[vertex_index] += self._weight * self.projections[instance_index]
+            system_rhs[vertex_index] += self._weight * self.projections[instance_index]

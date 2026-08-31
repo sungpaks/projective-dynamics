@@ -1,17 +1,22 @@
-# pyright: reportInvalidTypeForm=false
-
 """천의 물리 상태와 시간 적분을 관리한다."""
 
 import numpy as np
 import taichi as ti
 
-from cloth.constraint import IdentityConstraintSet
+from cloth.constraint import IdentityConstraintSet, ProjectiveConstraintSet
+from cloth.global_system import DiagonalGlobalSystem
 from cloth.rest_state import TriangleRestState
+from lib.taichi_typing import TaichiF32, TaichiVector3F32
 
 
 @ti.data_oriented
 class ClothSolver:
-    def __init__(self, initial_positions: np.ndarray, rest_state: TriangleRestState):
+    def __init__(
+        self,
+        initial_positions: np.ndarray,
+        rest_state: TriangleRestState,
+        time_step: float,
+    ) -> None:
         self._initial_positions = np.asarray(
             initial_positions,
             dtype=np.float32,
@@ -56,9 +61,16 @@ class ClothSolver:
 
         # Constraints
         self.identity_constraints = IdentityConstraintSet(vertex_count, weight=1.0)
-        self.projective_constraints = [
+        self.projective_constraints: list[ProjectiveConstraintSet] = [
             self.identity_constraints  # 더미 ConstraintSet
         ]
+
+        # Global System
+        self.global_system = DiagonalGlobalSystem(
+            vertex_count=vertex_count,
+            time_step=time_step,
+            constraints=self.projective_constraints,
+        )
 
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
@@ -77,7 +89,7 @@ class ClothSolver:
         self._initialize_solve_positions()
         for _ in range(self._solver_iterations):
             self._local_step()
-            self._global_step(time_step)
+            self._global_step()
 
             # 'collision'을 여기서 따로? self._project_collisions()
             self._project_ground_constraint()
@@ -86,8 +98,8 @@ class ClothSolver:
     @ti.kernel
     def _predict_positions(
         self,
-        time_step: ti.f32,
-        gravity: ti.types.vector(3, ti.f32),
+        time_step: TaichiF32,
+        gravity: TaichiVector3F32,
     ):
         # 모든 정점의 예상 위치를 계산한다.
         for vertex_index in self.positions:
@@ -107,13 +119,14 @@ class ClothSolver:
         # Constraint Projection..
         # 각 삼각형에 대해, p_i를 찾기
         # self._projected_deformations, self._projected_bending, ...
-        pass
+        for constraint in self.projective_constraints:
+            constraint.project(self.solve_positions)
 
-    def _global_step(self, time_step: float) -> None:
-        # Solve Linear System .. Equation 10을 짧게, Lq = b
-        # L = ... 매번 고정인 Global Matrix
-        # b = ... local step에서의 projected positions p_i를 모두 모은다
-        pass
+    def _global_step(self) -> None:
+        self.global_system.solve(
+            predicted_positions=self.predicted_positions,
+            solve_positions=self.solve_positions,
+        )
 
     @ti.kernel
     def _project_ground_constraint(self):
@@ -126,7 +139,7 @@ class ClothSolver:
                 # solved는 참조가 아니라서 이렇게 업데이트해줘야
 
     @ti.kernel
-    def _update_state(self, time_step: ti.f32):
+    def _update_state(self, time_step: TaichiF32):
         # 모든 정점의 위치와 속도를 업데이트한다.
         for vertex_index in self.positions:
             new_velocity = (

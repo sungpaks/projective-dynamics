@@ -17,6 +17,8 @@ WORLD_AXIS_LENGTH = 100.0
 OBJECT_AXIS_LENGTH = 0.3
 
 GRAVITY = (0.0, -9.81, 0.0)
+PHYSICS_STEPS_PER_SECOND = 60
+PHYSICS_TIME_STEP = 1.0 / PHYSICS_STEPS_PER_SECOND
 
 
 def main() -> None:
@@ -30,10 +32,10 @@ def main() -> None:
 
     rest_state = create_triangle_rest_state(vertices_np, indices_np)
 
-    solver = ClothSolver(vertices_np, rest_state)
+    solver = ClothSolver(vertices_np, rest_state, time_step=PHYSICS_TIME_STEP)
 
     time_stepper = TimeStepper(
-        steps_per_second=60,
+        steps_per_second=PHYSICS_STEPS_PER_SECOND,
         max_frame_time=0.25,
         max_substeps=8,
     )
