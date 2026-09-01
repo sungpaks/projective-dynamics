@@ -3,7 +3,7 @@
 import numpy as np
 import taichi as ti
 
-from cloth.constraint import IdentityConstraintSet, ProjectiveConstraintSet
+from cloth.constraint import ProjectiveConstraintSet, StrainConstraintSet
 from cloth.global_system import DenseGlobalSystem
 from cloth.rest_state import TriangleRestState
 from lib.taichi_typing import TaichiF32, TaichiVector3F32
@@ -57,12 +57,17 @@ class ClothSolver:
         self.inverse_rest_matrices.from_numpy(rest_state.inverse_edge_matrices)
         self.areas.from_numpy(rest_state.areas)
 
-        self._solver_iterations = 1  # local <-> global 반복 횟수
+        self._solver_iterations = 5  # local <-> global 반복 횟수
 
         # Constraints
-        self.identity_constraints = IdentityConstraintSet(vertex_count, weight=1.0)
+        self.strain_constraints = StrainConstraintSet(
+            rest_state=rest_state,
+            weight=10_000.0,
+            minimum_strain=0.9,
+            maximum_strain=1.1,
+        )
         self.projective_constraints: list[ProjectiveConstraintSet] = [
-            self.identity_constraints  # 더미 ConstraintSet
+            self.strain_constraints  # Strain ConstraintSet
         ]
 
         # Global System
