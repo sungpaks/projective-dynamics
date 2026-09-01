@@ -131,22 +131,19 @@ class StrainConstraintSet:
     def project(self, solve_positions) -> None:
         solve_positions_numpy = solve_positions.to_numpy()
 
-        projections_numpy = np.empty(
-            (self._instance_count, 3, 2),
-            dtype=np.float32,
+        # 삼각형 세 정점 위치를 한 번에 모은다 (Selection)
+        # shape: (triangle_count, 3, 3)
+        triangle_positions = solve_positions_numpy[self._triangles_numpy]
+
+        # triangle 전체에 대해 Q_i^T G_i (batch multiplication)
+        # shape: (triangle_count, 3, 2)
+        deformation_gradients = (
+            triangle_positions.transpose(0, 2, 1) @ self._gradient_coefficients_numpy
         )
 
-        for triangle_index in range(self._instance_count):
-            triangle = self._triangles_numpy[triangle_index]
-            triangle_positions = solve_positions_numpy[triangle]
-            gradient_coefficients = self._gradient_coefficients_numpy[triangle_index]
-
-            # T_i = X_f,i * X_g,i^{-1}
-            deformation_gradient = triangle_positions.T @ gradient_coefficients
-
-            projections_numpy[triangle_index] = self._project_deformation_gradient(
-                deformation_gradient
-            )
+        projections_numpy = self._project_deformation_gradients(
+            deformation_gradients
+        ).astype(np.float32, copy=False)
 
         self.projections.from_numpy(projections_numpy)
 
@@ -173,14 +170,14 @@ class StrainConstraintSet:
     def add_rhs(self, system_rhs) -> None:
         self._add_rhs(system_rhs)
 
-    def _project_deformation_gradient(
+    def _project_deformation_gradients(
         self,
-        deformation_gradient: np.ndarray,
+        deformation_gradients: np.ndarray,
     ) -> np.ndarray:
-        # TODO: SVD 분해를 ti.kernel로 구현
-        # SVD 분해하고
+        """모든 deformation gradient의 singular value를 strain 범위로 투영한다."""
         u, singular_values, vt = np.linalg.svd(
-            deformation_gradient, full_matrices=False
+            deformation_gradients,
+            full_matrices=False,
         )
 
         # singular value를 clamp하고
@@ -190,8 +187,8 @@ class StrainConstraintSet:
             self._maximum_strain,
         )
 
-        # 다시 결합해 projection matrix를 만든다
-        return u @ np.diag(projected_singular_values) @ vt
+        # diag 행렬을 만들지 않고 U의 각 열에 대응 singular value를 곱한다.
+        return (u * projected_singular_values[:, None, :]) @ vt
 
     @ti.kernel
     def _add_rhs(self, system_rhs: TaichiTemplate):
