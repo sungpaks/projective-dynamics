@@ -71,7 +71,6 @@ class DiagonalGlobalSystem:
             )
 
 
-@ti.data_oriented
 class DenseGlobalSystem:
     def __init__(
         self,
@@ -86,9 +85,6 @@ class DenseGlobalSystem:
         # LHS: Dense Matrix n x n 만들기.
         # 당분간 np.linalg.solve사용해 푸는 방식이니 np.ndarray, shape(NxN)으로 저장.
         self._build_lhs()
-
-        # RHS: 3차원 벡터 n x 3 (xyz)
-        self.system_rhs = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
 
     def _build_lhs(self) -> None:
         """Global LHS를 사전 빌드"""
@@ -107,21 +103,14 @@ class DenseGlobalSystem:
             assembler.add(vertex_index, vertex_index, 1.0 / (self._time_step**2))
 
     def solve(self, predicted_positions, solve_positions):
-        self._initialize_rhs(predicted_positions)
+        # self._initialize_rhs(predicted_positions) ti.kernel 대신 numpy구현:
+        predicted_numpy = predicted_positions.to_numpy().astype(np.float64)
+        rhs_numpy = predicted_numpy / self._time_step**2
 
         for constraint in self._constraints:
-            constraint.add_rhs(self.system_rhs)
+            constraint.add_rhs(rhs_numpy)
 
         # TODO: linalg.solve는 행렬을 매번 다시 분해함. 추후 Cholesky 분해 최적화 적용
-        rhs_numpy = self.system_rhs.to_numpy()
         solution_numpy = np.linalg.solve(self.lhs_matrix, rhs_numpy)
 
-        solve_positions.from_numpy(solution_numpy)
-
-    @ti.kernel
-    def _initialize_rhs(self, predicted_positions: TaichiTemplate):
-        """Global RHS를 초기화"""
-        for vertex_index in range(self._vertex_count):
-            self.system_rhs[vertex_index] = predicted_positions[vertex_index] / (
-                self._time_step**2
-            )
+        solve_positions.from_numpy(solution_numpy.astype(np.float32))

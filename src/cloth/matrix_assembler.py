@@ -34,7 +34,7 @@ class DenseMatrixAssembler:
     def __init__(self, size: int) -> None:
         self.values = np.zeros(
             (size, size),
-            dtype=np.float32,
+            dtype=np.float64,
         )
 
     def add(

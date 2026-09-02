@@ -88,14 +88,18 @@ class StrainConstraintSet:
 
         # T_i는 3x2
         self.projections = ti.Matrix.field(3, 2, dtype=ti.f32, shape=triangles_count)
+        self._projections_numpy = np.zeros(
+            (triangles_count, 3, 2),
+            dtype=np.float64,
+        )
 
         self._triangles_numpy = rest_state.triangles.copy()
         self.triangles = ti.Vector.field(3, dtype=ti.i32, shape=triangles_count)
         self.triangles.from_numpy(self._triangles_numpy)
 
-        self._areas_numpy = rest_state.areas.copy()
+        self._areas_numpy = rest_state.areas.astype(np.float64, copy=True)
         self.areas = ti.field(dtype=ti.f32, shape=triangles_count)
-        self.areas.from_numpy(self._areas_numpy)
+        self.areas.from_numpy(self._areas_numpy.astype(np.float32))
 
         # triangle 세 위치로부터 두 Edge (q_j - q_i, q_k - q_i)를 계산하는 operator D
         # D = [ [-1, -1], [1, 0], [0, 1] ]^T
@@ -105,14 +109,18 @@ class StrainConstraintSet:
                 [+1.0, 0.0],
                 [0.0, +1.0],
             ],
-            dtype=np.float32,
+            dtype=np.float64,
+        )
+
+        inverse_rest_matrices = rest_state.inverse_edge_matrices.astype(
+            np.float64,
+            copy=False,
         )
 
         # gradient coefficient = D^T * X_g^{-1} (X_g: rest edge matrix)
         # shape: (triangle_count, 3, 2)
         self._gradient_coefficients_numpy = (
-            edge_difference_operator_transposed[None, :, :]
-            @ rest_state.inverse_edge_matrices
+            edge_difference_operator_transposed[None, :, :] @ inverse_rest_matrices
         )
 
         self.gradient_coefficients = ti.Matrix.field(
@@ -121,7 +129,9 @@ class StrainConstraintSet:
             dtype=ti.f32,
             shape=triangles_count,
         )
-        self.gradient_coefficients.from_numpy(self._gradient_coefficients_numpy)
+        self.gradient_coefficients.from_numpy(
+            self._gradient_coefficients_numpy.astype(np.float32)
+        )
         # numpy배열은 add_lhs()에서, taichi field는 add_rhs()에서 사용
 
     @property
@@ -129,7 +139,7 @@ class StrainConstraintSet:
         return self._instance_count
 
     def project(self, solve_positions) -> None:
-        solve_positions_numpy = solve_positions.to_numpy()
+        solve_positions_numpy = solve_positions.to_numpy().astype(np.float64)
 
         # 삼각형 세 정점 위치를 한 번에 모은다 (Selection)
         # shape: (triangle_count, 3, 3)
@@ -141,11 +151,13 @@ class StrainConstraintSet:
             triangle_positions.transpose(0, 2, 1) @ self._gradient_coefficients_numpy
         )
 
-        projections_numpy = self._project_deformation_gradients(
+        self._projections_numpy = self._project_deformation_gradients(
             deformation_gradients
-        ).astype(np.float32, copy=False)
+        )
 
-        self.projections.from_numpy(projections_numpy)
+        # Global solve는 float64 NumPy 원본을 사용한다. Taichi field는
+        # 디버깅 및 Taichi 구현과의 비교를 위한 float32 사본이다.
+        self.projections.from_numpy(self._projections_numpy.astype(np.float32))
 
     def add_lhs(self, assembler: MatrixAssembler) -> None:
         # L_i = w_i * A_i * G_i * G_i^T (G_i: gradient coefficient, A_i: triangle area)
@@ -168,7 +180,8 @@ class StrainConstraintSet:
                     )
 
     def add_rhs(self, system_rhs) -> None:
-        self._add_rhs(system_rhs)
+        # self._add_rhs(system_rhs) ti.kernel 대신 numpy계산
+        self._add_rhs_numpy(system_rhs)
 
     def _project_deformation_gradients(
         self,
@@ -210,3 +223,19 @@ class StrainConstraintSet:
                         system_rhs[global_vertex_index][axis],
                         local_rhs[local_vertex_index, axis],  # pyright: ignore[reportIndexIssue]
                     )
+
+    def _add_rhs_numpy(self, system_rhs: np.ndarray) -> None:
+        local_rhs = (  # (3, 2) @ (2, 3) = (3, 3)
+            self._weight
+            * self._areas_numpy[:, None, None]
+            * (
+                self._gradient_coefficients_numpy
+                @ self._projections_numpy.transpose(0, 2, 1)
+            )
+        )
+        for local_vertex_index in range(3):
+            np.add.at(
+                system_rhs,
+                self._triangles_numpy[:, local_vertex_index],
+                local_rhs[:, local_vertex_index],
+            )
