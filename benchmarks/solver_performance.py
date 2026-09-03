@@ -13,6 +13,7 @@ import statistics
 import time
 from collections.abc import Callable
 
+import numpy as np
 import taichi as ti
 
 from cloth.global_system import DenseGlobalSystem
@@ -121,7 +122,26 @@ def main() -> None:
     solver._initialize_solve_positions()
     solver._local_step()
 
-    global_minimum, global_median = measure(
+    def solve_without_prefactorization() -> None:
+        """최적화 전 DenseGlobalSystem.solve와 같은 경로로 매번 LHS를 분해한다."""
+        predicted_numpy = solver.predicted_positions.to_numpy().astype(np.float64)
+        rhs_numpy = predicted_numpy / solver._time_step**2
+
+        for constraint in solver.projective_constraints:
+            constraint.add_rhs(rhs_numpy)
+
+        solution_numpy = np.linalg.solve(
+            solver.global_system.lhs_matrix,
+            rhs_numpy,
+        )
+        solver.solve_positions.from_numpy(solution_numpy.astype(np.float32))
+
+    baseline_global_minimum, baseline_global_median = measure(
+        solve_without_prefactorization,
+        repetitions=arguments.global_solves,
+        samples=arguments.samples,
+    )
+    prefactorized_global_minimum, prefactorized_global_median = measure(
         solver._global_step,
         repetitions=arguments.global_solves,
         samples=arguments.samples,
@@ -146,9 +166,14 @@ def main() -> None:
         f"median {milliseconds(physics_median):.3f} ms"
     )
     print(
-        "  one global solve     : "
-        f"min {milliseconds(global_minimum):.3f} ms, "
-        f"median {milliseconds(global_median):.3f} ms"
+        "  global solve (before): "
+        f"min {milliseconds(baseline_global_minimum):.3f} ms, "
+        f"median {milliseconds(baseline_global_median):.3f} ms"
+    )
+    print(
+        "  global solve (after) : "
+        f"min {milliseconds(prefactorized_global_minimum):.3f} ms, "
+        f"median {milliseconds(prefactorized_global_median):.3f} ms"
     )
 
 

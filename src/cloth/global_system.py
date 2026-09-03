@@ -2,6 +2,7 @@
 
 import numpy as np
 import taichi as ti
+from scipy.linalg import cho_factor, cho_solve
 
 from cloth.constraint import ProjectiveConstraintSet
 from cloth.matrix_assembler import DenseMatrixAssembler, DiagonalMatrixAssembler
@@ -83,8 +84,9 @@ class DenseGlobalSystem:
         self._constraints = tuple(constraints)
 
         # LHS: Dense Matrix n x n 만들기.
-        # 당분간 np.linalg.solve사용해 푸는 방식이니 np.ndarray, shape(NxN)으로 저장.
+        # np.ndarray, shape(NxN)으로 저장한 뒤 한 번만 Cholesky 분해한다.
         self._build_lhs()
+        self._factorize_lhs()
 
     def _build_lhs(self) -> None:
         """Global LHS를 사전 빌드"""
@@ -97,12 +99,32 @@ class DenseGlobalSystem:
 
         self.lhs_matrix = assembler.values.copy()
 
+    def _factorize_lhs(self) -> None:
+        """고정된 Global LHS를 Cholesky 분해하고 반복 solve를 위해 보관한다."""
+        if not np.allclose(
+            self.lhs_matrix,
+            self.lhs_matrix.T,
+            atol=1e-10,
+            rtol=0.0,
+        ):
+            raise ValueError("Global LHS must be symmetric")
+
+        try:
+            self._lhs_factor = cho_factor(
+                self.lhs_matrix,
+                lower=True,
+                overwrite_a=False,
+                check_finite=True,
+            )
+        except np.linalg.LinAlgError as error:
+            raise ValueError("Global LHS must be positive definite") from error
+
     def _add_inertial_lhs(self, assembler: DenseMatrixAssembler) -> None:
         """질량항 contribution을 global LHS에 추가"""
         for vertex_index in range(self._vertex_count):
             assembler.add(vertex_index, vertex_index, 1.0 / (self._time_step**2))
 
-    def solve(self, predicted_positions, solve_positions):
+    def solve(self, predicted_positions, solve_positions) -> None:
         # self._initialize_rhs(predicted_positions) ti.kernel 대신 numpy구현:
         predicted_numpy = predicted_positions.to_numpy().astype(np.float64)
         rhs_numpy = predicted_numpy / self._time_step**2
@@ -110,7 +132,11 @@ class DenseGlobalSystem:
         for constraint in self._constraints:
             constraint.add_rhs(rhs_numpy)
 
-        # TODO: linalg.solve는 행렬을 매번 다시 분해함. 추후 Cholesky 분해 최적화 적용
-        solution_numpy = np.linalg.solve(self.lhs_matrix, rhs_numpy)
+        solution_numpy = cho_solve(
+            self._lhs_factor,
+            rhs_numpy,
+            overwrite_b=False,
+            check_finite=False,
+        )
 
         solve_positions.from_numpy(solution_numpy.astype(np.float32))
