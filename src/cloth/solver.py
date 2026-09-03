@@ -3,10 +3,16 @@
 import numpy as np
 import taichi as ti
 
-from cloth.constraint import ProjectiveConstraintSet, StrainConstraintSet
+from cloth.constraint import (
+    PositionConstraintSet,
+    ProjectiveConstraintSet,
+    StrainConstraintSet,
+)
 from cloth.global_system import DenseGlobalSystem
 from cloth.rest_state import TriangleRestState
 from lib.taichi_typing import TaichiF32, TaichiVector3F32
+
+POSITIONS_CONSTRAINT_WEIGHT = 1_000_000.0
 
 
 @ti.data_oriented
@@ -16,6 +22,7 @@ class ClothSolver:
         initial_positions: np.ndarray,
         rest_state: TriangleRestState,
         time_step: float,
+        fixed_vertex_indices: np.ndarray | None = None,
     ) -> None:
         self._initial_positions = np.asarray(
             initial_positions,
@@ -69,6 +76,14 @@ class ClothSolver:
         self.projective_constraints: list[ProjectiveConstraintSet] = [
             self.strain_constraints  # Strain ConstraintSet
         ]
+
+        if fixed_vertex_indices is not None:
+            self.positions_constraints = PositionConstraintSet(
+                vertex_indices=fixed_vertex_indices,
+                target_positions=self._initial_positions[fixed_vertex_indices],
+                weight=POSITIONS_CONSTRAINT_WEIGHT,
+            )
+            self.projective_constraints.append(self.positions_constraints)
 
         # Global System
         self.global_system = DenseGlobalSystem(

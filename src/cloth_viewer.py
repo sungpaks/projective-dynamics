@@ -1,5 +1,6 @@
 """Taichi GGUI로 정적인 삼각형 격자를 렌더링한다."""
 
+import numpy as np
 import taichi as ti
 
 from cloth.grid import create_cloth_basis, create_cloth_grid
@@ -9,7 +10,7 @@ from lib.axis_helper import AxisHelper
 from lib.time_stepper import TimeStepper
 
 # 격자의 각 변에 정점이 GRID_SIZE개.
-GRID_SIZE = 20
+GRID_SIZE = 10
 WINDOW_RESOLUTION = (960, 720)
 CLOTH_POSITION = (0.0, 2.0, 0.0)
 CLOTH_NORMAL = (0.0, 0.0, 1.0)
@@ -29,10 +30,21 @@ def main() -> None:
         position=CLOTH_POSITION,
         normal=CLOTH_NORMAL,
     )
+    vertices_np[:, 2] += 0.001 * np.sin(vertices_np[:, 0] * np.pi)
+
+    fixed_vertex_indices = np.arange(
+        GRID_SIZE,
+        dtype=np.int32,
+    )
 
     rest_state = create_triangle_rest_state(vertices_np, indices_np)
 
-    solver = ClothSolver(vertices_np, rest_state, time_step=PHYSICS_TIME_STEP)
+    solver = ClothSolver(
+        vertices_np,
+        rest_state,
+        time_step=PHYSICS_TIME_STEP,
+        fixed_vertex_indices=fixed_vertex_indices,
+    )
 
     time_stepper = TimeStepper(
         steps_per_second=PHYSICS_STEPS_PER_SECOND,
@@ -73,8 +85,8 @@ def main() -> None:
     gui = window.get_gui()
     camera = ti.ui.Camera()
 
-    camera.position(0.2, 1.0, 5.0)
-    camera.lookat(0.0, 0.9, 0.0)
+    camera.position(0.2, 1, 5.0)
+    camera.lookat(0.0, 1, 0.0)
     camera.up(0.0, 1.0, 0.0)
     gravity_enabled = False
 

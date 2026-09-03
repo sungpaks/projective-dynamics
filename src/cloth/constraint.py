@@ -239,3 +239,33 @@ class StrainConstraintSet:
                 self._triangles_numpy[:, local_vertex_index],
                 local_rhs[:, local_vertex_index],
             )
+
+
+class PositionConstraintSet:
+    def __init__(
+        self,
+        vertex_indices: np.ndarray,
+        target_positions: np.ndarray,
+        weight: float,
+    ) -> None:
+        self._vertex_indices = np.asarray(vertex_indices, dtype=np.int32).copy()
+        self._target_positions = np.asarray(target_positions, dtype=np.float32).copy()
+        self._weight = weight
+
+    @property
+    def instance_count(self) -> int:
+        return len(self._vertex_indices)
+
+    def project(self, solve_positions) -> None:
+        # target position은 항상 고정. 갱신할 projection이 없다.
+        pass
+
+    def add_lhs(self, assembler: MatrixAssembler) -> None:
+        for vertex_index in self._vertex_indices:
+            index = int(vertex_index)
+            assembler.add(index, index, self._weight)
+
+    def add_rhs(self, system_rhs: np.ndarray) -> None:
+        np.add.at(
+            system_rhs, self._vertex_indices, self._weight * self._target_positions
+        )
