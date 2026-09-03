@@ -28,6 +28,7 @@ class ClothSolver:
             initial_positions,
             dtype=np.float32,
         ).copy()
+        self._current_positions_numpy = self._initial_positions.copy()
 
         vertex_count = len(self._initial_positions)
         self._vertex_count = vertex_count
@@ -101,11 +102,19 @@ class ClothSolver:
 
     def reset(self) -> None:
         """위치와 속도를 시뮬레이션 시작 상태로 되돌린다."""
+        self._current_positions_numpy = self._initial_positions.copy()
         self.positions.from_numpy(self._initial_positions)
         self.velocities.fill(0.0)
         self.predicted_positions.from_numpy(self._initial_positions)
         self.solve_positions.from_numpy(self._initial_positions)
         self._vertex_accelerations.fill(0.0)
+
+    @property
+    def current_positions(self) -> np.ndarray:
+        """CPU 연산용 현재 위치의 읽기 전용 view를 반환한다."""
+        positions = self._current_positions_numpy.view()
+        positions.flags.writeable = False
+        return positions
 
     def step(
         self,
@@ -115,13 +124,22 @@ class ClothSolver:
         """주어진 시간만큼 물리 상태를 진행한다."""
         self._set_vertex_accelerations(vertex_accelerations)
         self._predict_positions(self._time_step, gravity)
-        self._initialize_solve_positions()
+
+        # GPU -> CPU 복사는 physics step당 한 번만 한다. 이후 Local-Global
+        # 반복은 같은 float64 NumPy 배열을 계속 사용한다.
+        predicted_positions = self.predicted_positions.to_numpy().astype(np.float64)
+        solve_positions = predicted_positions.copy()
         for _ in range(self._solver_iterations):
-            self._local_step()
-            self._global_step()
+            self._local_step(solve_positions)
+            solve_positions = self._global_step(predicted_positions)
 
             # 'collision'을 여기서 따로? self._project_collisions()
-            self._project_ground_constraint()
+            self._project_ground_constraint(solve_positions)
+
+        # 반복 도중에는 업로드하지 않고 최종 해만 Taichi 상태에 반영한다.
+        final_positions = solve_positions.astype(np.float32)
+        self._current_positions_numpy = final_positions
+        self.solve_positions.from_numpy(final_positions)
         self._update_state(self._time_step)
 
     def _set_vertex_accelerations(
@@ -157,33 +175,20 @@ class ClothSolver:
             )
             self.predicted_positions[vertex_index] = predicted
 
-    @ti.kernel
-    def _initialize_solve_positions(self):
-        for vertex_index in self.solve_positions:
-            self.solve_positions[vertex_index] = self.predicted_positions[vertex_index]
-
-    def _local_step(self) -> None:
+    def _local_step(self, solve_positions: np.ndarray) -> None:
         # Constraint Projection..
         # 각 삼각형에 대해, p_i를 찾기
         # self._projected_deformations, self._projected_bending, ...
         for constraint in self.projective_constraints:
-            constraint.project(self.solve_positions)
+            constraint.project(solve_positions)
 
-    def _global_step(self) -> None:
-        self.global_system.solve(
-            predicted_positions=self.predicted_positions,
-            solve_positions=self.solve_positions,
-        )
+    def _global_step(self, predicted_positions: np.ndarray) -> np.ndarray:
+        return self.global_system.solve(predicted_positions=predicted_positions)
 
-    @ti.kernel
-    def _project_ground_constraint(self):
+    @staticmethod
+    def _project_ground_constraint(solve_positions: np.ndarray) -> None:
         # 모든 정점이 지면 아래로 내려가지 않도록 제한한다.
-        for vertex_index in self.solve_positions:
-            solved = self.solve_positions[vertex_index]
-            if solved[1] < 0.0:
-                solved[1] = 0.0
-                self.solve_positions[vertex_index] = solved
-                # solved는 참조가 아니라서 이렇게 업데이트해줘야
+        solve_positions[:, 1] = np.maximum(solve_positions[:, 1], 0.0)
 
     @ti.kernel
     def _update_state(self, time_step: TaichiF32):

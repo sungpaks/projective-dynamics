@@ -29,11 +29,12 @@ def test_uniform_vertex_acceleration_should_translate_rest_cloth() -> None:
     # Then: 모든 정점은 h²a만큼 평행 이동해야 한다
     expected_positions = initial_positions + time_step**2 * vertex_accelerations
     np.testing.assert_allclose(
-        solver.positions.to_numpy(),
+        solver.current_positions,
         expected_positions,
         atol=1e-5,
         rtol=0.0,
     )
+    assert not solver.current_positions.flags.writeable
 
 
 def test_solver_should_reject_invalid_vertex_acceleration_shape() -> None:

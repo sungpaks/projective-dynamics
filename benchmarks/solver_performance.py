@@ -119,22 +119,23 @@ def main() -> None:
     # 한 번 준비한다. 이후 측정에는 SVD local step과 상태 갱신이 포함되지 않는다.
     solver.reset()
     solver._predict_positions(solver._time_step, zero_gravity)
-    solver._initialize_solve_positions()
-    solver._local_step()
+    predicted_numpy = solver.predicted_positions.to_numpy().astype(np.float64)
+    solver._local_step(predicted_numpy.copy())
 
     def solve_without_prefactorization() -> None:
         """최적화 전 DenseGlobalSystem.solve와 같은 경로로 매번 LHS를 분해한다."""
-        predicted_numpy = solver.predicted_positions.to_numpy().astype(np.float64)
         rhs_numpy = predicted_numpy / solver._time_step**2
 
         for constraint in solver.projective_constraints:
             constraint.add_rhs(rhs_numpy)
 
-        solution_numpy = np.linalg.solve(
+        np.linalg.solve(
             solver.global_system.lhs_matrix,
             rhs_numpy,
         )
-        solver.solve_positions.from_numpy(solution_numpy.astype(np.float32))
+
+    def solve_with_prefactorization() -> None:
+        solver._global_step(predicted_numpy)
 
     baseline_global_minimum, baseline_global_median = measure(
         solve_without_prefactorization,
@@ -142,7 +143,7 @@ def main() -> None:
         samples=arguments.samples,
     )
     prefactorized_global_minimum, prefactorized_global_median = measure(
-        solver._global_step,
+        solve_with_prefactorization,
         repetitions=arguments.global_solves,
         samples=arguments.samples,
     )

@@ -124,19 +124,16 @@ class DenseGlobalSystem:
         for vertex_index in range(self._vertex_count):
             assembler.add(vertex_index, vertex_index, 1.0 / (self._time_step**2))
 
-    def solve(self, predicted_positions, solve_positions) -> None:
-        # self._initialize_rhs(predicted_positions) ti.kernel 대신 numpy구현:
-        predicted_numpy = predicted_positions.to_numpy().astype(np.float64)
-        rhs_numpy = predicted_numpy / self._time_step**2
+    def solve(self, predicted_positions: np.ndarray) -> np.ndarray:
+        """이미 CPU에 있는 예측 위치로 Global solve를 수행한다."""
+        rhs_numpy = predicted_positions / self._time_step**2
 
         for constraint in self._constraints:
             constraint.add_rhs(rhs_numpy)
 
-        solution_numpy = cho_solve(
+        return cho_solve(
             self._lhs_factor,
             rhs_numpy,
             overwrite_b=False,
             check_finite=False,
         )
-
-        solve_positions.from_numpy(solution_numpy.astype(np.float32))

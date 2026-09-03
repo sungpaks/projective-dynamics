@@ -55,7 +55,7 @@ def _calculate_wind_accelerations(
         dtype=np.float64,
     )
     accelerations = calculate_screen_space_accelerations(
-        positions=solver.positions.to_numpy(),
+        positions=solver.current_positions,
         cursor_position=window.get_cursor_pos(),
         view_matrix=view_matrix,
         projection_matrix=projection_matrix,

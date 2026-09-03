@@ -12,7 +12,7 @@ class ProjectiveConstraintSet(Protocol):
     @property
     def instance_count(self) -> int: ...
 
-    def project(self, solve_positions) -> None:
+    def project(self, solve_positions: np.ndarray) -> None:
         """Local Step에서 p_i 갱신 (per constraint-instance)"""
 
     def add_lhs(self, assembler) -> None:
@@ -71,7 +71,6 @@ class IdentityConstraintSet:
             system_rhs[vertex_index] += self._weight * self.projections[instance_index]
 
 
-@ti.data_oriented
 class StrainConstraintSet:
     def __init__(
         self,
@@ -86,20 +85,14 @@ class StrainConstraintSet:
         self._minimum_strain = minimum_strain
         self._maximum_strain = maximum_strain
 
-        # T_i는 3x2
-        self.projections = ti.Matrix.field(3, 2, dtype=ti.f32, shape=triangles_count)
+        # 각 T_i는 3x2이며 Dense Global solve와 같은 CPU 메모리에 둔다.
         self._projections_numpy = np.zeros(
             (triangles_count, 3, 2),
             dtype=np.float64,
         )
 
         self._triangles_numpy = rest_state.triangles.copy()
-        self.triangles = ti.Vector.field(3, dtype=ti.i32, shape=triangles_count)
-        self.triangles.from_numpy(self._triangles_numpy)
-
         self._areas_numpy = rest_state.areas.astype(np.float64, copy=True)
-        self.areas = ti.field(dtype=ti.f32, shape=triangles_count)
-        self.areas.from_numpy(self._areas_numpy.astype(np.float32))
 
         # triangle 세 위치로부터 두 Edge (q_j - q_i, q_k - q_i)를 계산하는 operator D
         # D = [ [-1, -1], [1, 0], [0, 1] ]^T
@@ -123,27 +116,14 @@ class StrainConstraintSet:
             edge_difference_operator_transposed[None, :, :] @ inverse_rest_matrices
         )
 
-        self.gradient_coefficients = ti.Matrix.field(
-            3,
-            2,
-            dtype=ti.f32,
-            shape=triangles_count,
-        )
-        self.gradient_coefficients.from_numpy(
-            self._gradient_coefficients_numpy.astype(np.float32)
-        )
-        # numpy배열은 add_lhs()에서, taichi field는 add_rhs()에서 사용
-
     @property
     def instance_count(self) -> int:
         return self._instance_count
 
-    def project(self, solve_positions) -> None:
-        solve_positions_numpy = solve_positions.to_numpy().astype(np.float64)
-
+    def project(self, solve_positions: np.ndarray) -> None:
         # 삼각형 세 정점 위치를 한 번에 모은다 (Selection)
         # shape: (triangle_count, 3, 3)
-        triangle_positions = solve_positions_numpy[self._triangles_numpy]
+        triangle_positions = solve_positions[self._triangles_numpy]
 
         # triangle 전체에 대해 Q_i^T G_i (batch multiplication)
         # shape: (triangle_count, 3, 2)
@@ -154,10 +134,6 @@ class StrainConstraintSet:
         self._projections_numpy = self._project_deformation_gradients(
             deformation_gradients
         )
-
-        # Global solve는 float64 NumPy 원본을 사용한다. Taichi field는
-        # 디버깅 및 Taichi 구현과의 비교를 위한 float32 사본이다.
-        self.projections.from_numpy(self._projections_numpy.astype(np.float32))
 
     def add_lhs(self, assembler: MatrixAssembler) -> None:
         # L_i = w_i * A_i * G_i * G_i^T (G_i: gradient coefficient, A_i: triangle area)
@@ -203,27 +179,6 @@ class StrainConstraintSet:
         # diag 행렬을 만들지 않고 U의 각 열에 대응 singular value를 곱한다.
         return (u * projected_singular_values[:, None, :]) @ vt
 
-    @ti.kernel
-    def _add_rhs(self, system_rhs: TaichiTemplate):
-        for triangle_index in range(self._instance_count):
-            triangle = self.triangles[triangle_index]  # (3,)
-            coefficient = self.gradient_coefficients[triangle_index]  # (3,2)
-            projection = self.projections[triangle_index]  # (3,2)
-            area = self.areas[triangle_index]  # scalar
-
-            # (3,2) @ (2,3) = (3,3)
-            local_rhs = (coefficient @ projection.transpose()) * (self._weight * area)
-
-            for local_vertex_index in ti.static(range(3)):
-                global_vertex_index = triangle[local_vertex_index]
-
-                for axis in ti.static(range(3)):
-                    # 인접한 triangle들이 같은 global vertex에 동시에 더할 수 있음
-                    ti.atomic_add(
-                        system_rhs[global_vertex_index][axis],
-                        local_rhs[local_vertex_index, axis],  # pyright: ignore[reportIndexIssue]
-                    )
-
     def _add_rhs_numpy(self, system_rhs: np.ndarray) -> None:
         local_rhs = (  # (3, 2) @ (2, 3) = (3, 3)
             self._weight
@@ -256,7 +211,7 @@ class PositionConstraintSet:
     def instance_count(self) -> int:
         return len(self._vertex_indices)
 
-    def project(self, solve_positions) -> None:
+    def project(self, solve_positions: np.ndarray) -> None:
         # target position은 항상 고정. 갱신할 projection이 없다.
         pass
 
