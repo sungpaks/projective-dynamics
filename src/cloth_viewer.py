@@ -6,6 +6,9 @@ import taichi as ti
 from cloth.grid import create_cloth_basis, create_cloth_grid
 from cloth.rest_state import create_triangle_rest_state
 from cloth.solver import ClothSolver
+from interaction.screen_space_acceleration import (
+    calculate_screen_space_accelerations,
+)
 from lib.axis_helper import AxisHelper
 from lib.time_stepper import TimeStepper
 
@@ -20,6 +23,49 @@ OBJECT_AXIS_LENGTH = 0.3
 GRAVITY = (0.0, -9.81, 0.0)
 PHYSICS_STEPS_PER_SECOND = 60
 PHYSICS_TIME_STEP = 1.0 / PHYSICS_STEPS_PER_SECOND
+INITIAL_WIND_ACCELERATION = 80.0
+INITIAL_WIND_RADIUS_PIXELS = 100.0
+
+
+def _camera_forward_direction(view_matrix: np.ndarray) -> np.ndarray:
+    """Taichi view matrix로부터 카메라가 바라보는 world-space 방향을 구한다."""
+    camera_to_world = np.linalg.inv(view_matrix)
+    camera_forward = (
+        np.array((0.0, 0.0, -1.0, 0.0), dtype=np.float64) @ camera_to_world
+    )[:3]
+    return camera_forward / np.linalg.norm(camera_forward)
+
+
+def _calculate_wind_accelerations(
+    window: ti.ui.Window,
+    camera: ti.ui.Camera,
+    solver: ClothSolver,
+    fixed_vertex_indices: np.ndarray,
+    radius_pixels: float,
+    magnitude: float,
+) -> np.ndarray | None:
+    """LMB를 누르는 동안 cursor 중심의 화면 공간 바람을 계산한다."""
+    if not window.is_pressed(ti.ui.LMB):
+        return None
+
+    window_width, window_height = window.get_window_shape()
+    view_matrix = np.asarray(camera.get_view_matrix(), dtype=np.float64)
+    projection_matrix = np.asarray(
+        camera.get_projection_matrix(window_width / window_height),
+        dtype=np.float64,
+    )
+    accelerations = calculate_screen_space_accelerations(
+        positions=solver.positions.to_numpy(),
+        cursor_position=window.get_cursor_pos(),
+        view_matrix=view_matrix,
+        projection_matrix=projection_matrix,
+        window_size=(window_width, window_height),
+        radius_pixels=radius_pixels,
+        magnitude=magnitude,
+        direction=_camera_forward_direction(view_matrix),
+    )
+    accelerations[fixed_vertex_indices] = 0.0
+    return accelerations
 
 
 def main() -> None:
@@ -89,13 +135,29 @@ def main() -> None:
     camera.lookat(0.0, 1, 0.0)
     camera.up(0.0, 1.0, 0.0)
     gravity_enabled = False
+    wind_acceleration = INITIAL_WIND_ACCELERATION
+    wind_radius_pixels = INITIAL_WIND_RADIUS_PIXELS
 
     while window.running:
-        gravity = GRAVITY if gravity_enabled else (0.0, 0.0, 0.0)
-        time_stepper.advance(lambda time_step: solver.step(gravity))
-
         # 마우스 오른쪽 버튼으로 카메라를 회전하고 W/A/S/D/E/Q로 이동.
         camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
+        wind_accelerations = _calculate_wind_accelerations(
+            window=window,
+            camera=camera,
+            solver=solver,
+            fixed_vertex_indices=fixed_vertex_indices,
+            radius_pixels=wind_radius_pixels,
+            magnitude=wind_acceleration,
+        )
+
+        gravity = GRAVITY if gravity_enabled else (0.0, 0.0, 0.0)
+        time_stepper.advance(
+            lambda time_step: solver.step(
+                gravity,
+                vertex_accelerations=wind_accelerations,
+            )
+        )
+
         scene.set_camera(camera)
         canvas.set_background_color((1.0, 1.0, 1.0))
 
@@ -122,8 +184,21 @@ def main() -> None:
 
         canvas.scene(scene)
 
-        with gui.sub_window("Controls", 0.02, 0.78, 0.16, 0.16):
+        with gui.sub_window("Controls", 0.02, 0.68, 0.2, 0.28):
             gravity_enabled = gui.checkbox("gravity", gravity_enabled)
+            wind_acceleration = gui.slider_float(
+                "wind acceleration",
+                wind_acceleration,
+                minimum=0.0,
+                maximum=300.0,
+            )
+            wind_radius_pixels = gui.slider_float(
+                "wind radius",
+                wind_radius_pixels,
+                minimum=10.0,
+                maximum=300.0,
+            )
+            gui.text("Hold LMB to blow wind")
             if gui.button("reset"):
                 gravity_enabled = False
                 solver.reset()

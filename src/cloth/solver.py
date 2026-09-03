@@ -30,6 +30,7 @@ class ClothSolver:
         ).copy()
 
         vertex_count = len(self._initial_positions)
+        self._vertex_count = vertex_count
         triangle_count = len(rest_state.triangles)
 
         # q_n, v, s, q_n+1(구하는 중)
@@ -41,6 +42,11 @@ class ClothSolver:
             shape=vertex_count,
         )
         self.solve_positions = ti.Vector.field(3, dtype=ti.f32, shape=vertex_count)
+        self._vertex_accelerations = ti.Vector.field(
+            3,
+            dtype=ti.f32,
+            shape=vertex_count,
+        )
 
         self.reset()
 
@@ -99,12 +105,15 @@ class ClothSolver:
         self.velocities.fill(0.0)
         self.predicted_positions.from_numpy(self._initial_positions)
         self.solve_positions.from_numpy(self._initial_positions)
+        self._vertex_accelerations.fill(0.0)
 
     def step(
         self,
         gravity: tuple[float, float, float],
+        vertex_accelerations: np.ndarray | None = None,
     ) -> None:
         """주어진 시간만큼 물리 상태를 진행한다."""
+        self._set_vertex_accelerations(vertex_accelerations)
         self._predict_positions(self._time_step, gravity)
         self._initialize_solve_positions()
         for _ in range(self._solver_iterations):
@@ -114,6 +123,23 @@ class ClothSolver:
             # 'collision'을 여기서 따로? self._project_collisions()
             self._project_ground_constraint()
         self._update_state(self._time_step)
+
+    def _set_vertex_accelerations(
+        self,
+        vertex_accelerations: np.ndarray | None,
+    ) -> None:
+        if vertex_accelerations is None:
+            self._vertex_accelerations.fill(0.0)
+            return
+
+        accelerations_numpy = np.asarray(vertex_accelerations, dtype=np.float32)
+        expected_shape = (self._vertex_count, 3)
+        if accelerations_numpy.shape != expected_shape:
+            raise ValueError(f"vertex_accelerations must have shape {expected_shape}")
+        if not np.all(np.isfinite(accelerations_numpy)):
+            raise ValueError("vertex_accelerations must contain only finite values")
+
+        self._vertex_accelerations.from_numpy(accelerations_numpy)
 
     @ti.kernel
     def _predict_positions(
@@ -125,8 +151,9 @@ class ClothSolver:
         for vertex_index in self.positions:
             position = self.positions[vertex_index]
             velocity = self.velocities[vertex_index]
+            acceleration = gravity + self._vertex_accelerations[vertex_index]
             predicted = (
-                position + velocity * time_step + time_step * time_step * gravity
+                position + velocity * time_step + time_step * time_step * acceleration
             )
             self.predicted_positions[vertex_index] = predicted
 
