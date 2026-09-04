@@ -35,7 +35,7 @@ python src/cloth_viewer.py
 
 #### 최적화
 
-- [v] Dense Matrix + Cholesky prefactorization
+- [x] Dense Matrix + Cholesky prefactorization
 - [ ] Dense Matrix를 Sparse Matrix로 개선
 - [ ] CPU/GPU 연산 경계
 - [ ] ...
