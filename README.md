@@ -14,7 +14,7 @@ python -m pip install -r requirements-dev.txt
 
 (2026.09.04기준)`cloth_viewer`는 `ti.metal`을 사용하므로 macOS/Metal 환경에서 실행가능
 
-## 첫 번째 예제: 정적 천 메쉬
+## 첫 번째 예제: 2D Cloth
 
 ```bash
 python src/cloth_viewer.py
